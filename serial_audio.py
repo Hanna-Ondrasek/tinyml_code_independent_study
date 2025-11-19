@@ -3,7 +3,11 @@ Code by: Ipyana Issah Mwaisekwa
 """
 
 """
-run this: python serial.py -p COM5 -d training -l audio
+run this: python serial_audio.py -p COM3 -d training -l girl
+
+or 
+
+python serial_audio.py -p COM3 -d training -l boy
 """
 
 import serial
@@ -150,6 +154,7 @@ def main():
             # Generate a unique filename for the audio file
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             uid = str(uuid.uuid4())[-12:]
+            # label is the gender
             filename = f"{label}.{uid}.{timestamp}.wav"
             audio_path = os.path.join(out_dir, filename)
 
