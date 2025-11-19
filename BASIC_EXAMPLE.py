@@ -61,9 +61,9 @@ def plot_mfcc(audio_path):
     # oh my god just checking to see if in the training file string if
     # the filename contains a label e.g. male or female voice
     # is actually genius
-    if "boy" in file:
+    if "boy" in audio_path:
         y.append(0)  # 0 for "boy"
-    elif "girl" in file:
+    elif "girl" in audio_path:
         y.append(1)  # 1 for "girl"
 
 
@@ -112,6 +112,10 @@ print(y)
 x = np.array(x)
 y = np.array(y)
 
+print("x dimensions:", x.ndim)
+
+
+# https://www.kaggle.com/code/romeodavid/keras-librosa-mfcc-feature-extraction
 
 # time to actually train the model
 X_train, X_test, y_train, y_test = train_test_split(
