@@ -7,28 +7,23 @@ import torchaudio.transforms as T
 import pandas as pd
 import numpy as np
 from keras.models import Sequential
-from keras.layers import Dense, Dropout, Flatten, Conv2D, MaxPooling2D
+from keras.layers import Dense, Dropout, Flatten, LSTM
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
+import matplotlib.pyplot as plt
 
-# Define the batch size
 batch_size = 8
-
-# Define the number of epochs
 epochs = 10
 
-
-# features and labels
 x = []
 y = []
 
-# for padding
-max_frames = 20
-
-# define the number of classes
+max_frames = 100
 num_classes = 2
+n_mfcc = 13
 
 
-# for later :3
 def plot_loss(history):
     plt.plot(history.history["loss"], label="loss")
     plt.plot(history.history["val_loss"], label="val_loss")
@@ -40,62 +35,22 @@ def plot_loss(history):
 
 
 def plot_mfcc(audio_path):
-    # Load the audio file
     audio, sr = librosa.load(audio_path)
+    audio = librosa.util.normalize(audio)
+    mfccs = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=n_mfcc)
 
-    # Extract MFCC features
-    mfccs = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=13)
-    # type: class 'numpy.ndarray'
-    # append the features and labels to the x and y lists
-
-    # padding
-    # before padding: The requested array has an inhomogeneous shape after 2 dimensions. The detected shape was (5, 13) + inhomogeneous part.
     shape_mfccs = mfccs.shape[1]
     if shape_mfccs > max_frames:
         mfccs = mfccs[:, :max_frames]
     else:
         mfccs = np.pad(mfccs, ((0, 0), (0, max_frames - shape_mfccs)))
-    # pad_mfcc(mfccs)
 
     x.append(mfccs)
-    # oh my god just checking to see if in the training file string if
-    # the filename contains a label e.g. male or female voice
-    # is actually genius
+
     if "boy" in audio_path:
-        y.append(0)  # 0 for "boy"
+        y.append(0)
     elif "girl" in audio_path:
-        y.append(1)  # 1 for "girl"
-
-
-labels = ["boy", "girl"]
-
-# print(type(mfccs))
-# # Shape: (13, 67)
-# #  the optimum number of MFCCs is well known to be 13
-# # meaning: 67 elements for each of the 13 1D arrays (13 rows, 67 cols)
-# # frame = short audio slices of 20 ms
-# print("Shape:", mfccs.shape)
-# # numpy array to pd dataframe
-# # Using pd.DataFrame()
-# df1 = pd.DataFrame(mfccs)
-
-# # Display the DataFrame
-# print(df1)
-
-# # Plot MFCCs
-# plt.figure(figsize=(10, 4))
-# librosa.display.specshow(mfccs, x_axis="time", cmap="viridis")
-# plt.colorbar(format="%+2.0f dB")
-# plt.title("MFCC")
-# plt.xlabel("Time")
-# plt.ylabel("MFCC Coefficient")
-# plt.show()
-
-
-# Example usage
-# base_dir = r"c:\Users\hanna\Downloads\10_29"
-# audio_file_path = os.path.join(base_dir, "girl_count1.wav")
-# plot_mfcc(audio_file_path)
+        y.append(1)
 
 
 base_dir = r"c:\Users\hanna\Downloads\10_29\training"
@@ -104,50 +59,35 @@ for file in os.listdir(base_dir):
     audio_file_path = os.path.join(base_dir, file)
     plot_mfcc(audio_file_path)
 
-list_size = len(y)
-print(list_size)
-print(y)
-
-# Convert the lists to numpy arrays
 x = np.array(x)
 y = np.array(y)
+print(y)
 
-print("x dimensions:", x.ndim)
+# global normalization
+mean = np.mean(x)
+std = np.std(x)
+x = (x - mean) / std
 
-
-# https://www.kaggle.com/code/romeodavid/keras-librosa-mfcc-feature-extraction
-
-# time to actually train the model
 X_train, X_test, y_train, y_test = train_test_split(
-    x, y, test_size=0.8, random_state=42
+    x, y, test_size=0.2, random_state=42, stratify=y
 )
 
-# Reshape the data to fit the input shape of the CNN
-X_train = X_train[..., np.newaxis]
-X_test = X_test[..., np.newaxis]
+print("train:", y_train)
+print("test:", y_test)
 
+# reshape for LSTM: (samples, timesteps, features)
+X_train = X_train.transpose(0, 2, 1)
+X_test = X_test.transpose(0, 2, 1)
 
 model = Sequential()
-model.add(
-    Conv2D(
-        32,
-        (3, 3),
-        activation="relu",
-        input_shape=(X_train.shape[1], X_train.shape[2], 1),
-    )
-)
-model.add(MaxPooling2D((2, 2)))
-model.add(Dropout(0.25))
-model.add(Flatten())
-model.add(Dense(128, activation="relu"))
+# LSTM neural network is a recurrent neural network (RNN).
+model.add(LSTM(64, input_shape=(max_frames, n_mfcc)))
 model.add(Dropout(0.5))
+model.add(Dense(32, activation="relu"))
 model.add(Dense(1, activation="sigmoid"))
-
 
 model.compile(loss="binary_crossentropy", optimizer="adam", metrics=["accuracy"])
 
-
-# Train the model
 history = model.fit(
     X_train,
     y_train,
@@ -157,61 +97,43 @@ history = model.fit(
     validation_data=(X_test, y_test),
 )
 
-# Evaluate the model on the test set
 score = model.evaluate(X_test, y_test, verbose=0)
-
 test_loss, test_accuracy = model.evaluate(X_test, y_test, verbose=2)
-
 hist = pd.DataFrame(history.history)
 hist["epoch"] = history.epoch
 plot_loss(history)
 
-# silly goofy territory
 base_dir = r"c:\Users\hanna\Downloads\10_29"
 audio_file_path = os.path.join(base_dir, "boy_count_test.wav")
 audio, sr = librosa.load(audio_file_path)
+audio = librosa.util.normalize(audio)
 
-# mfcc stuff
-# Extract MFCC features
-mfccs = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=13)
-# type: class 'numpy.ndarray'
-# append the features and labels to the x and y lists
+mfccs = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=n_mfcc)
 
-# padding
-# before padding: The requested array has an inhomogeneous shape after 2 dimensions. The detected shape was (5, 13) + inhomogeneous part.
 shape_mfccs = mfccs.shape[1]
 if shape_mfccs > max_frames:
     mfccs = mfccs[:, :max_frames]
 else:
     mfccs = np.pad(mfccs, ((0, 0), (0, max_frames - shape_mfccs)))
-    # pad_mfcc(mfccs)
 
+mfccs = (mfccs - mean) / std
 
-# Normalize MFCC features
-# Calculate mean and standard deviation of MFCC features
-mfccs = np.array(mfccs)
-mean = np.mean(mfccs)
-std = np.std(mfccs)
-mfccs_norm = (mfccs - mean) / std
+mfccs = mfccs.T.reshape(1, max_frames, n_mfcc)
 
-# Reshape MFCC features for model input
-mfccs_norm = mfccs_norm.reshape(1, mfccs_norm.shape[0], mfccs_norm.shape[1], 1)
-
-
-# Get predicted class probabilities
-probs = model.predict(mfccs_norm)
-predicted_label = np.argmax(probs)
+probs = model.predict(mfccs)[0][0]
+predicted_label = 1 if probs >= 0.5 else 0
 
 print("Predicted label: ", predicted_label)
+print("Probability:", probs)
 
 
-# plot_mfcc(audio_file_path)
+y_pred = model.predict(X_test)
+y_pred = (y_pred >= 0.5).astype(int)
 
 
-# waveform, sample_rate = torchaudio.load("crumple.wav", normalize=True)
-# transform = T.MFCC(
-#     sample_rate=sample_rate,
-#     n_mfcc=13,
-#     melkwargs={"n_fft": 400, "hop_length": 160, "n_mels": 23, "center": False},
-# )
-# mfcc = transform(waveform)
+cm = confusion_matrix(y_test, y_pred)
+
+sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
+plt.xlabel("Predicted")
+plt.ylabel("True")
+plt.show()
